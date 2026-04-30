@@ -1,3 +1,14 @@
+// [SECURITY] HTML escape helper
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.get(
         ['memoryBankApiKey', 'userName', 'userRole', 'currentWorkspaceId', 'workspaces', 'isSavingInProgress', 'dailyCredits', 'hasStarterPack'],
@@ -48,7 +59,7 @@ async function silentRefreshUserData() {
                 });
             }
         } catch (e) {
-            console.error("Real-time sync failed", e);
+            console.error("Real-time sync failed");
         }
     });
 }
@@ -73,7 +84,7 @@ function silentRefreshViaGoogleToken(today) {
                 if (today) saveData.lastCreditResetDate = today;
                 chrome.storage.local.set(saveData);
             } catch (error) {
-                console.error("Background sync failed:", error);
+                console.error("Background sync failed");
             }
             resolve();
         });
@@ -125,7 +136,8 @@ document.getElementById('login-btn').addEventListener('click', () => {
             btn.disabled = false;
             statusMsg.style.display = 'block';
             statusMsg.style.color = '#ef4444';
-            statusMsg.innerHTML = `❌ Login failed: ${chrome.runtime.lastError.message}`;
+            // [SECURITY] error message escape
+            statusMsg.textContent = `❌ Login failed: ${chrome.runtime.lastError.message || 'Unknown error'}`;
             return;
         }
         try {
@@ -166,7 +178,7 @@ document.getElementById('login-btn').addEventListener('click', () => {
             btn.disabled = false;
             statusMsg.style.display = 'block';
             statusMsg.style.color = '#ef4444';
-            statusMsg.innerHTML = `🚨 Server connection failed`;
+            statusMsg.textContent = `🚨 Server connection failed`;
         }
     });
 });
@@ -185,7 +197,9 @@ function showLoggedInUI(name, workspaces, currentWsId, isSaving, credits, role, 
     const statusMsg = document.getElementById('status-message');
     statusMsg.style.display = 'block';
 
-    let roleHtml = `<span class="role-badge ${role.toLowerCase()}">${role}</span>`;
+    // [SECURITY] role 화이트리스트 검증 — 임의 클래스명/HTML 주입 차단
+    const safeRole = ['FREE', 'LITE', 'PRO', 'PREMIUM'].includes(role) ? role : 'FREE';
+    let roleHtml = `<span class="role-badge ${safeRole.toLowerCase()}">${safeRole}</span>`;
 
     if (hasStarterPack) {
         roleHtml += `<span title="Starter Pack Owner" style="font-size: 14px; margin-left: 5px; vertical-align: middle; cursor: help; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.1));">🐣</span>`;
@@ -197,7 +211,8 @@ function showLoggedInUI(name, workspaces, currentWsId, isSaving, credits, role, 
         statusMsg.innerHTML = `⏳ <b>Task in progress on webpage!</b><br>Controls are restricted until completion.`;
     } else {
         statusMsg.style.color = '#10b981';
-        statusMsg.innerHTML = `✅ Welcome, <b>${name}</b>! ${roleHtml}`;
+        // [SECURITY FIX] name은 Google OAuth 응답이지만 임의 문자열 가능 → escape 필수
+        statusMsg.innerHTML = `✅ Welcome, <b>${escapeHtml(name)}</b>! ${roleHtml}`;
     }
 
     const wsSelect = document.getElementById('workspace-select');
@@ -205,7 +220,7 @@ function showLoggedInUI(name, workspaces, currentWsId, isSaving, credits, role, 
     workspaces.forEach(ws => {
         const option = document.createElement('option');
         option.value = ws.id;
-        option.textContent = ws.name;
+        option.textContent = ws.name;  // textContent라 안전
         if (ws.id == currentWsId) option.selected = true;
         fragment.appendChild(option);
     });
@@ -216,7 +231,7 @@ function showLoggedInUI(name, workspaces, currentWsId, isSaving, credits, role, 
     document.getElementById('history-container').style.display = 'block';
 
     const limits = { FREE: 1, LITE: 2, PRO: 4, PREMIUM: 9999 };
-    const currentLimit = limits[role] || 1;
+    const currentLimit = limits[safeRole] || 1;
     const currentCount = workspaces ? workspaces.length : 0;
     const addBtn = document.getElementById('add-workspace-btn');
 
@@ -260,12 +275,14 @@ document.getElementById('add-workspace-btn').addEventListener('click', async () 
 
         const wsName = prompt("Enter a new workspace name:");
         if (!wsName?.trim()) return;
+        // [SECURITY] 길이 제한
+        const trimmedName = wsName.trim().slice(0, 100);
 
         try {
             const response = await fetch("https://aimemorybank.cloud/api/workspaces", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "X-API-KEY": memoryBankApiKey },
-                body: JSON.stringify({ name: wsName.trim() })
+                body: JSON.stringify({ name: trimmedName })
             });
             if (!response.ok) throw new Error("Creation failed");
 
@@ -283,16 +300,17 @@ document.getElementById('edit-workspace-btn').addEventListener('click', () => {
         const currentWs = workspaces.find(w => w.id == currentWorkspaceId);
         const newName = prompt("Enter new name for the workspace:", currentWs?.name ?? "");
         if (!newName?.trim() || newName === currentWs?.name) return;
+        const trimmedName = newName.trim().slice(0, 100);
 
         try {
             const response = await fetch(`https://aimemorybank.cloud/api/workspaces/${currentWorkspaceId}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json", "X-API-KEY": memoryBankApiKey },
-                body: JSON.stringify({ name: newName.trim() })
+                body: JSON.stringify({ name: trimmedName })
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            const updated = workspaces.map(w => w.id == currentWorkspaceId ? { ...w, name: newName.trim() } : w);
+            const updated = workspaces.map(w => w.id == currentWorkspaceId ? { ...w, name: trimmedName } : w);
             chrome.storage.local.set({ workspaces: updated }, () => location.reload());
         } catch {
             alert(`🚨 Name edit failed!`);
@@ -332,23 +350,48 @@ document.getElementById('toggle-history-btn').addEventListener('click', () => {
     if (isHidden) renderHistory();
 });
 
+// [OPTIMIZATION + SECURITY] DOM 메서드로 빌드 — innerHTML 템플릿 + 임의 문자열 주입 회피
 function renderHistory() {
     chrome.storage.local.get(['activityHistory'], (data) => {
         const list = document.getElementById('history-list');
         const history = data.activityHistory || [];
+        list.innerHTML = '';
+
         if (history.length === 0) {
-            list.innerHTML = '<li style="text-align: center; color: #9ca3af; padding: 10px;">No recent history.</li>';
+            const empty = document.createElement('li');
+            empty.style.cssText = 'text-align:center;color:#9ca3af;padding:10px;';
+            empty.textContent = 'No recent history.';
+            list.appendChild(empty);
             return;
         }
-        list.innerHTML = history.map(item => `
-            <li style="display: flex; justify-content: space-between; padding: 8px 6px; border-bottom: 1px solid #f3f4f6;">
-                <span style="color: #4b5563; font-weight: 600;">${item.action}</span>
-                <div style="text-align: right;">
-                    <span style="color: #f59e0b; font-weight: 800; margin-right: 6px;">-${item.cost}⚡</span>
-                    <span style="color: #9ca3af; font-size: 10px;">${item.time}</span>
-                </div>
-            </li>
-        `).join('');
+
+        const frag = document.createDocumentFragment();
+        history.forEach(item => {
+            const li = document.createElement('li');
+            li.style.cssText = 'display:flex;justify-content:space-between;padding:8px 6px;border-bottom:1px solid #f3f4f6;';
+
+            const action = document.createElement('span');
+            action.style.cssText = 'color:#4b5563;font-weight:600;';
+            action.textContent = item.action ?? '';
+
+            const right = document.createElement('div');
+            right.style.textAlign = 'right';
+
+            const cost = document.createElement('span');
+            cost.style.cssText = 'color:#f59e0b;font-weight:800;margin-right:6px;';
+            cost.textContent = `-${Number(item.cost) || 0}⚡`;
+
+            const time = document.createElement('span');
+            time.style.cssText = 'color:#9ca3af;font-size:10px;';
+            time.textContent = item.time ?? '';
+
+            right.appendChild(cost);
+            right.appendChild(time);
+            li.appendChild(action);
+            li.appendChild(right);
+            frag.appendChild(li);
+        });
+        list.appendChild(frag);
     });
 }
 
@@ -422,15 +465,11 @@ function checkActiveJobProgress() {
                     setTimeout(() => { container.style.display = 'none'; }, 3000);
                 }
             } catch (e) {
-                console.error("Progress polling error", e);
+                console.error("Progress polling error");
             }
         }, 1500);
     });
 }
-
-// =========================================================
-// [결제 연동] 레몬스퀴지 체크아웃 팝업 띄우기
-// =========================================================
 
 const CHECKOUT_LINKS = {
     STARTER: "https://memory-bank.lemonsqueezy.com/checkout/buy/5673c702-c027-4ce2-94d3-2d3abbc703ba",
@@ -456,6 +495,8 @@ function switchTab(tab) {
 document.addEventListener('click', (e) => {
     if (e.target.classList.contains('upgrade-btn')) {
         const plan = e.target.getAttribute('data-plan');
+        // [SECURITY] plan 화이트리스트 검증
+        if (!Object.prototype.hasOwnProperty.call(CHECKOUT_LINKS, plan)) return;
         const baseUrl = CHECKOUT_LINKS[plan];
 
         chrome.storage.local.get(['userEmail'], (data) => {
@@ -507,11 +548,6 @@ function updateStoreVisibility(role, hasStarterPack) {
     }
 }
 
-
-// =========================================================
-// [결제 관리] 레몬스퀴지 고객 포털 팝업 띄우기
-// =========================================================
-
 document.addEventListener('click', async (e) => {
     if (e.target.id === 'manage-subscription-btn') {
         const btn = e.target;
@@ -527,7 +563,6 @@ document.addEventListener('click', async (e) => {
             }
 
             try {
-                // 백엔드에 레몬스퀴지 고객 포털 URL 요청
                 const response = await fetch("https://aimemorybank.cloud/api/billing/portal", {
                     method: "GET",
                     headers: { "X-API-KEY": data.memoryBankApiKey }
@@ -544,15 +579,15 @@ document.addEventListener('click', async (e) => {
 
                 const result = await response.json();
 
-                // 받아온 URL로 새 탭 열기
-                if (result.portalUrl) {
+                // [SECURITY] portalUrl 검증 — https + 신뢰 도메인만 허용 (open-redirect 방지)
+                if (result.portalUrl && /^https:\/\/([a-z0-9-]+\.)*lemonsqueezy\.com\//i.test(result.portalUrl)) {
                     chrome.tabs.create({ url: result.portalUrl });
                 } else {
-                    alert("Error: Missing portal URL in response.");
+                    alert("Error: Invalid portal URL.");
                 }
 
             } catch (error) {
-                console.error("Billing Portal Error:", error);
+                console.error("Billing Portal Error");
                 alert("🚨 Failed to open billing portal. Please try again later.");
             } finally {
                 btn.innerHTML = 'Manage Subscription';

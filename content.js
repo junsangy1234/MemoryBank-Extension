@@ -17,53 +17,28 @@ style.textContent = `
     .mb-slash-mode { color: #3b82f6 !important; font-weight: bold !important; transition: color 0.3s ease; }
     .mb-input-blocker { position: absolute; background-color: rgba(255,255,255,0.9); display: flex; justify-content: center; align-items: center; z-index: 2147483647; font-size: 14px; font-weight: bold; color: #3b82f6; backdrop-filter: blur(4px); border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); cursor: not-allowed; }
 
-    /* ===== Smart Compass Styles ===== */
     #mb-bookmark-compass {
         transition: border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease, opacity 0.3s ease;
     }
     .mb-compass-icon {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        width: 32px;
-        height: 32px;
-        color: inherit;
+        display: flex; justify-content: center; align-items: center;
+        width: 32px; height: 32px; color: inherit;
         transition: transform 0.3s ease;
     }
     .mb-compass-icon svg { display: block; }
     .mb-compass-spin .mb-compass-icon { animation: mb-spin 1.4s linear infinite; }
-    .mb-compass-found {
-        border-color: #10b981 !important;
-        color: #10b981 !important;
-        box-shadow: 0 0 14px rgba(16, 185, 129, 0.55) !important;
-        opacity: 1 !important;
-    }
-    .mb-compass-error {
-        border-color: #ef4444 !important;
-        color: #ef4444 !important;
-        box-shadow: 0 0 14px rgba(239, 68, 68, 0.55) !important;
-        opacity: 1 !important;
-    }
+    .mb-compass-found { border-color: #10b981 !important; color: #10b981 !important; box-shadow: 0 0 14px rgba(16, 185, 129, 0.55) !important; opacity: 1 !important; }
+    .mb-compass-error { border-color: #ef4444 !important; color: #ef4444 !important; box-shadow: 0 0 14px rgba(239, 68, 68, 0.55) !important; opacity: 1 !important; }
     #mb-bookmark-compass { position: fixed; }
     #mb-bookmark-compass::after {
         content: attr(data-tooltip);
-        position: absolute;
-        right: calc(100% + 10px);
-        top: 50%;
+        position: absolute; right: calc(100% + 10px); top: 50%;
         transform: translateY(-50%);
-        background: #111827;
-        color: #fff;
-        font-size: 12px;
-        font-weight: 600;
-        padding: 6px 10px;
-        border-radius: 6px;
-        white-space: nowrap;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.15s ease;   /* ← 여기서 속도 조절 */
+        background: #111827; color: #fff; font-size: 12px; font-weight: 600;
+        padding: 6px 10px; border-radius: 6px; white-space: nowrap;
+        opacity: 0; pointer-events: none; transition: opacity 0.15s ease;
     }
     #mb-bookmark-compass:hover::after { opacity: 1; }
-
 `;
 document.head.appendChild(style);
 
@@ -83,7 +58,6 @@ const siteConfig = {
     "poe.com": '[class*="Message_botMessage"], [class*="Message_humanMessage"]'
 };
 
-// 나침반 SVG (위쪽 방향 - 저장점이 위에 있음)
 const COMPASS_SVG_UP = `
 <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <circle cx="16" cy="16" r="13" fill="#ffffff" stroke="currentColor" stroke-width="2"/>
@@ -92,7 +66,6 @@ const COMPASS_SVG_UP = `
     <circle cx="16" cy="16" r="1.8" fill="currentColor"/>
 </svg>`;
 
-// 나침반 SVG (아래쪽 방향 - 저장점이 아래에 있음)
 const COMPASS_SVG_DOWN = `
 <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <circle cx="16" cy="16" r="13" fill="#ffffff" stroke="currentColor" stroke-width="2"/>
@@ -111,6 +84,18 @@ window.addEventListener('beforeunload', () => {
 // =========================================================
 // 3. 유틸리티 함수
 // =========================================================
+
+// [SECURITY] HTML escape — innerHTML / insertHTML 직전에 사용
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function calculateFullScanCredits(textLength) {
     return Math.max(1, Math.ceil(textLength / 5000));
 }
@@ -147,19 +132,36 @@ function getFlagKey(auth) {
     return `mb_flag_v3_${safeEmail}_${auth.workspaceId}_${hostname}_${cleanPath}`;
 }
 
-function getAuthInfo() {
+// [OPTIMIZATION] auth info 캐싱 — 매초 chrome.storage I/O 줄임
+let _authCache = { data: null, ts: 0 };
+const AUTH_CACHE_TTL = 3000;
+
+function getAuthInfo(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && _authCache.data && (now - _authCache.ts) < AUTH_CACHE_TTL) {
+        return Promise.resolve(_authCache.data);
+    }
     return new Promise(resolve => {
         chrome.storage.local.get(['memoryBankApiKey', 'currentWorkspaceId', 'userEmail', 'userRole', 'hasStarterPack'], result => {
-            resolve({
+            const data = {
                 apiKey: result.memoryBankApiKey,
                 workspaceId: result.currentWorkspaceId,
                 userEmail: result.userEmail,
                 userRole: result.userRole || 'FREE',
                 hasStarterPack: result.hasStarterPack || false
-            });
+            };
+            _authCache = { data, ts: Date.now() };
+            resolve(data);
         });
     });
 }
+
+// auth 변경 감지 시 캐시 무효화
+chrome.storage.onChanged.addListener((changes) => {
+    if (changes.memoryBankApiKey || changes.currentWorkspaceId || changes.userRole || changes.hasStarterPack || changes.userEmail) {
+        _authCache = { data: null, ts: 0 };
+    }
+});
 
 function showLoginPrompt() {
     alert("Please open the Memory Bank extension popup to log in first!");
@@ -172,7 +174,7 @@ function showPaywallModal(actionType) {
         getAuthInfo().then(auth => {
             if (auth.userEmail) {
                 const checkoutUrl = `https://memory-bank.lemonsqueezy.com/checkout/buy/48419913-7c97-4859-b3b6-50438e33db61?checkout[custom][user_email]=${encodeURIComponent(auth.userEmail)}&checkout[email]=${encodeURIComponent(auth.userEmail)}`;
-                window.open(checkoutUrl, '_blank');
+                window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
             } else {
                 alert("Please open the extension popup to log in first!");
             }
@@ -180,13 +182,15 @@ function showPaywallModal(actionType) {
     }
 }
 
+// [SECURITY FIX] insertHTML에 raw 텍스트를 넣으면 XSS 발생 가능 — escape 후 변환
 function insertTextAndTrigger(target, text) {
     target.focus();
 
     if (target.isContentEditable) {
         document.execCommand('selectAll', false, null);
-        const htmlText = text.replace(/\r?\n/g, '<br>');
-        document.execCommand('insertHTML', false, htmlText);
+        // [CRITICAL] HTML escape 먼저 수행 → 그 다음에만 줄바꿈을 <br>로 변환
+        const safeText = escapeHtml(text).replace(/\r?\n/g, '<br>');
+        document.execCommand('insertHTML', false, safeText);
 
         target.dispatchEvent(new Event('input', { bubbles: true }));
     } else {
@@ -267,14 +271,28 @@ function getOrCreateEl(id, tag = 'div') {
     })();
 }
 
+// [SECURITY] textLength는 Number라 안전하지만, DOM 메서드로 빌드해 전반적 안전성 확보
 function showFullScanLockdown(textLength) {
     const overlay = getOrCreateEl('mb-fullscan-lockdown');
-    overlay.innerHTML = `
-        <div style="font-size:60px;animation:mb-spin 2s linear infinite;margin-bottom:20px;">⏳</div>
-        <h2 style="margin:0 0 10px 0; font-family: sans-serif;">Scanning Full Conversation...</h2>
-        <p style="font-size:16px;font-weight:bold;color:#60a5fa; font-family: sans-serif;">Please do not close the window or scroll during data loading.</p>
-        <p style="margin-top:10px;color:#9ca3af; font-family: sans-serif;">Collected characters: ${textLength.toLocaleString()} chars</p>
-    `;
+    overlay.innerHTML = '';
+
+    const spinner = document.createElement('div');
+    spinner.style.cssText = 'font-size:60px;animation:mb-spin 2s linear infinite;margin-bottom:20px;';
+    spinner.textContent = '⏳';
+
+    const h2 = document.createElement('h2');
+    h2.style.cssText = 'margin:0 0 10px 0;font-family:sans-serif;';
+    h2.textContent = 'Scanning Full Conversation...';
+
+    const p1 = document.createElement('p');
+    p1.style.cssText = 'font-size:16px;font-weight:bold;color:#60a5fa;font-family:sans-serif;';
+    p1.textContent = 'Please do not close the window or scroll during data loading.';
+
+    const p2 = document.createElement('p');
+    p2.style.cssText = 'margin-top:10px;color:#9ca3af;font-family:sans-serif;';
+    p2.textContent = `Collected characters: ${Number(textLength).toLocaleString()} chars`;
+
+    overlay.append(spinner, h2, p1, p2);
 }
 
 function hideFullScanLockdown() {
@@ -299,17 +317,18 @@ function showFullScanConfirmModal(scanData, auth, unifiedFlagKey, unlockCallback
         textAlign: 'center', width: '360px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)'
     });
 
+    // scanData.textLength / estimatedCredits 모두 number — 안전. innerHTML 사용 OK.
     box.innerHTML = `
         <div style="font-size:48px;margin-bottom:12px;">📋</div>
         <h3 style="margin:0 0 16px 0; color:#111827; font-size: 20px; font-weight: 700;">Scan Complete!</h3>
         <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:24px;text-align:left;font-size:14px;color:#374151;">
             <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
                 <span style="color:#6b7280;font-weight:600;">Collected Text:</span>
-                <strong style="color:#111827;">${scanData.textLength.toLocaleString()} chars</strong>
+                <strong style="color:#111827;">${Number(scanData.textLength).toLocaleString()} chars</strong>
             </div>
             <div style="display:flex;justify-content:space-between;">
                 <span style="color:#6b7280;font-weight:600;">Estimated Credits:</span>
-                <strong style="color:#2563eb;font-size:15px;">${scanData.estimatedCredits} ⚡</strong>
+                <strong style="color:#2563eb;font-size:15px;">${Number(scanData.estimatedCredits)} ⚡</strong>
             </div>
         </div>
         <p style="color:#9ca3af;font-size:12px;margin-bottom:24px;line-height:1.4;">Upon confirmation, progress will be shown in the center,<br>and it will be safely saved in the background.</p>
@@ -370,7 +389,7 @@ function showFullScanConfirmModal(scanData, auth, unifiedFlagKey, unlockCallback
             startJobPolling(jobId, auth, scanData.estimatedCredits, unifiedFlagKey, scanData.newFlag);
 
         } catch (error) {
-            alert("🚨 Error occurred: " + error.message);
+            alert("🚨 Error occurred: " + (error.message || 'Unknown'));
             overlay.remove(); unlockCallback();
         }
     };
@@ -391,23 +410,47 @@ function startJobPolling(jobId, auth, estimatedCredits, flagKey, newFlag) {
 
             if (data.status === "COMPLETED") {
                 clearInterval(pollInterval);
-
                 localStorage.setItem(flagKey, newFlag);
                 chrome.storage.local.remove(['activeMbJob']);
-
                 alert("✅ Full conversation background save successfully completed!");
             } else if (data.status === "FAILED") {
                 clearInterval(pollInterval);
                 chrome.storage.local.remove(['activeMbJob']);
                 alert("🚨 Server error occurred during background save.");
             }
-        } catch {
-        }
+        } catch {}
     }, 2000);
 }
 
 // =========================================================
-// 8. 플로팅 메뉴 (FAB) 모던 테마
+// [OPTIMIZATION] 스크롤 가능 컨테이너 캐싱
+// document.querySelectorAll('*') 전체 순회 대신 알려진 컨테이너만 검사
+// =========================================================
+function getScrollableContainers() {
+    const candidates = [
+        'main', 'main [class*="scroll"]', 'main [class*="overflow"]',
+        '[class*="conversation"]', '[class*="chat-container"]',
+        '[role="main"]', '[role="log"]',
+        'div[class*="messages"]', 'div[class*="thread"]'
+    ];
+    const found = new Set();
+    for (const sel of candidates) {
+        document.querySelectorAll(sel).forEach(el => {
+            if (el.scrollHeight > el.clientHeight + 50) found.add(el);
+        });
+    }
+    return Array.from(found);
+}
+
+function scrollAllToTop() {
+    window.scrollTo(0, 0);
+    getScrollableContainers().forEach(el => {
+        if (el.scrollTop > 0) el.scrollTo(0, 0);
+    });
+}
+
+// =========================================================
+// 8. 플로팅 메뉴 (FAB)
 // =========================================================
 function injectFloatingMenu() {
     if (document.getElementById('memory-bank-fab-container')) return;
@@ -417,8 +460,6 @@ function injectFloatingMenu() {
     const isGrok = window.location.hostname.includes('grok.com');
     Object.assign(fabContainer.style, {
         position: 'fixed', bottom: isGrok ? '30px' : '20px', right: isGrok ? '80px' : '20px', zIndex: '2147483640',
-        // [FIX] alignItems 'center' → 'flex-end' 로 변경하여 서브 버튼이 펼쳐질 때
-        // 메인 아이콘 위치가 흔들리지 않도록 우측 기준으로 고정
         display: 'flex', flexDirection: 'column-reverse', alignItems: 'flex-end', gap: '10px',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
     });
@@ -437,7 +478,6 @@ function injectFloatingMenu() {
         backgroundColor: '#3b82f6', color: 'white', border: 'none', fontSize: '24px',
         cursor: 'pointer', boxShadow: '0 4px 10px rgba(59, 130, 246, 0.3)', transition: 'transform 0.3s ease',
         display: 'flex', justifyContent: 'center', alignItems: 'center',
-        // [FIX] 서브 버튼들이 좌측으로 펼쳐져도 메인 버튼은 우측 끝에 고정
         flexShrink: '0', alignSelf: 'flex-end'
     });
 
@@ -446,23 +486,29 @@ function injectFloatingMenu() {
     mainBtn.appendChild(spinnerRing);
 
     const setupSubButton = (btn, text, costStr) => {
-        btn.innerHTML = `<span class="mb-btn-text">${text}</span> <span class="mb-btn-cost" style="color:#3b82f6;font-size:11px;opacity:0;max-width:0;overflow:hidden;transition:all 0.3s ease;white-space:nowrap;">(-${costStr})</span>`;
+        // [SECURITY] text/costStr은 내부 상수지만 방어적으로 textContent 사용
+        const textSpan = document.createElement('span');
+        textSpan.className = 'mb-btn-text';
+        textSpan.textContent = text;
+        const costSpan = document.createElement('span');
+        costSpan.className = 'mb-btn-cost';
+        costSpan.style.cssText = 'color:#3b82f6;font-size:11px;opacity:0;max-width:0;overflow:hidden;transition:all 0.3s ease;white-space:nowrap;';
+        costSpan.textContent = ` (-${costStr})`;
+        btn.append(textSpan, costSpan);
+
         Object.assign(btn.style, {
             padding: '12px 18px', backgroundColor: '#ffffff', color: '#111827',
             border: '1px solid #e5e7eb', borderRadius: '30px', fontSize: '13px', fontWeight: '600',
             cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', transition: 'all 0.2s ease-in-out',
             opacity: '0', transform: 'translateY(20px)', pointerEvents: 'none',
             display: 'flex', alignItems: 'center',
-            // [FIX] 서브 버튼도 우측 정렬 명시 (안정성 강화)
             alignSelf: 'flex-end', flexShrink: '0'
         });
 
         const showCost = (show) => {
-            const c = btn.querySelector('.mb-btn-cost');
-            if (!c) return;
-            c.style.opacity = show ? '1' : '0';
-            c.style.maxWidth = show ? '60px' : '0px';
-            c.style.marginLeft = show ? '6px' : '0px';
+            costSpan.style.opacity = show ? '1' : '0';
+            costSpan.style.maxWidth = show ? '60px' : '0px';
+            costSpan.style.marginLeft = show ? '6px' : '0px';
         };
         btn.onmouseenter = () => showCost(true);
         btn.onmouseleave = () => showCost(false);
@@ -521,7 +567,7 @@ function injectFloatingMenu() {
         if (window.mbIsBusy) return;
 
         try {
-            const auth = await getAuthInfo();
+            const auth = await getAuthInfo(true);
             if (!auth.apiKey || !auth.workspaceId) { showLoginPrompt(); return; }
             if (auth.userRole === 'FREE' && !auth.hasStarterPack) { alert("🔒 Full conversation scan is available for LITE tier and above."); return; }
 
@@ -569,10 +615,8 @@ function injectFloatingMenu() {
 
                 if (reachedFlag) break;
 
-                window.scrollTo(0, 0);
-                document.querySelectorAll('*').forEach(el => {
-                    if (el.scrollHeight > el.clientHeight && el.scrollTop > 0) el.scrollTo(0, 0);
-                });
+                // [OPTIMIZATION] 전체 DOM 순회 → 캐시된 컨테이너만 스크롤
+                scrollAllToTop();
 
                 await new Promise(r => setTimeout(r, 1500));
 
@@ -620,7 +664,7 @@ function injectFloatingMenu() {
         } catch (error) {
             hideFullScanLockdown();
             setBusyState(false);
-            alert("🚨 Error occurred during scan: " + error.message);
+            alert("🚨 Error occurred during scan: " + (error.message || 'Unknown'));
         }
     };
 
@@ -630,7 +674,7 @@ function injectFloatingMenu() {
         if (window.mbIsBusy) return;
 
         try {
-            const auth = await getAuthInfo();
+            const auth = await getAuthInfo(true);
             if (!auth.apiKey || !auth.workspaceId) { showLoginPrompt(); return; }
 
             const currentPlatform = getCurrentPlatform();
@@ -724,7 +768,7 @@ function injectFloatingMenu() {
 
         } catch (error) {
             setBusyState(false);
-            if (error.message !== "INSUFFICIENT_CREDITS") alert("🚨 Save Snippet Failed: " + error.message);
+            if (error.message !== "INSUFFICIENT_CREDITS") alert("🚨 Save Snippet Failed: " + (error.message || 'Unknown'));
         }
     };
 
@@ -734,7 +778,7 @@ function injectFloatingMenu() {
         if (window.mbIsBusy) return;
 
         try {
-            const auth = await getAuthInfo();
+            const auth = await getAuthInfo(true);
             if (!auth.apiKey || !auth.workspaceId) { showLoginPrompt(); return; }
 
             setBusyState(true);
@@ -763,6 +807,8 @@ function injectFloatingMenu() {
             deductLocalCredit(auth, CREDIT_COST.SYNC, "📥 Sync Memory");
 
             const newLastId = memories[memories.length - 1].id;
+            // memory.content는 서버에서 내려오는 임의 텍스트 — 그대로 sync prompt에 박는데
+            // insertTextAndTrigger 안에서 escapeHtml 처리되므로 contentEditable에는 안전
             const memoryContents = memories.map((m, i) => `${i + 1}. ${m.content}`).join('\n');
             const cleanSyncPrompt = `[System Instruction: Memorize the following data and reply strictly with "Yes, I have updated my memory."]\n\n[Loaded Memory Chunk]\n${memoryContents}`.trim();
 
@@ -786,14 +832,21 @@ function injectFloatingMenu() {
     document.body.appendChild(fabContainer);
 }
 
+// [OPTIMIZATION] MutationObserver throttle — 매 mutation마다 체크 X
+let _fabCheckQueued = false;
 const fabObserver = new MutationObserver(() => {
-    if (!document.getElementById('memory-bank-fab-container')) injectFloatingMenu();
+    if (_fabCheckQueued) return;
+    _fabCheckQueued = true;
+    setTimeout(() => {
+        _fabCheckQueued = false;
+        if (!document.getElementById('memory-bank-fab-container')) injectFloatingMenu();
+    }, 500);
 });
 fabObserver.observe(document.body, { childList: true, subtree: false });
 injectFloatingMenu();
 
 // =========================================================
-// 9. /m 인라인 검색 커맨드 (엔터 & 마우스 클릭 완벽 대응)
+// 9. /m 인라인 검색 커맨드
 // =========================================================
 function initSlashCommandListener() {
     document.addEventListener('input', (e) => {
@@ -816,6 +869,8 @@ function initSlashCommandListener() {
 
         const query = text.substring(3).trim();
         if (!query) { alert("Please enter a question to search. (e.g., /m What is my favorite food?)"); return true; }
+        // [SECURITY] 길이 제한
+        if (query.length > 2000) { alert("Query too long (max 2000 chars)."); return true; }
 
         target.dataset.mbSearching = "true";
 
@@ -833,7 +888,7 @@ function initSlashCommandListener() {
         const removeBlocker = () => document.getElementById('mb-input-blocker')?.remove();
 
         try {
-            const auth = await getAuthInfo();
+            const auth = await getAuthInfo(true);
             if (!auth.apiKey) throw new Error("NO_AUTH");
 
             const response = await fetch(
@@ -894,9 +949,10 @@ function initSlashCommandListener() {
 setTimeout(initSlashCommandListener, 2000);
 
 // =========================================================
-// 10. 스마트 나침반 (SVG 아이콘 기반 — 깔끔 모던 리뉴얼)
+// 10. 스마트 나침반
 // =========================================================
 let isNavigatorInitialized = false;
+let _trackInterval = null;
 
 async function initSmartNavigator() {
     if (isNavigatorInitialized) return;
@@ -916,13 +972,11 @@ async function initSmartNavigator() {
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
     });
 
-    // 내부 아이콘 컨테이너 (회전 애니메이션 대상)
     const compassIcon = document.createElement('div');
     compassIcon.className = 'mb-compass-icon';
     compass.appendChild(compassIcon);
 
     compass.onmouseenter = () => {
-        // 상태 락(found/error) 중에는 호버 색상 덮어쓰지 않음
         if (compass.classList.contains('mb-compass-found') || compass.classList.contains('mb-compass-error')) return;
         Object.assign(compass.style, { backgroundColor: '#3b82f6', opacity: '1', transform: 'scale(1.08)' });
         compass.style.color = '#ffffff';
@@ -934,9 +988,6 @@ async function initSmartNavigator() {
     };
     document.body.appendChild(compass);
 
-    // 나침반 상태 변경 헬퍼
-    // state: 'default' | 'searching' | 'found' | 'notfound'
-    // direction: 'up' | 'down' (default 상태일 때만 사용)
     function setCompassState(state, direction = 'up') {
         compass.classList.remove('mb-compass-spin', 'mb-compass-found', 'mb-compass-error');
 
@@ -945,14 +996,12 @@ async function initSmartNavigator() {
             compass.dataset.tooltip = direction === 'up'
                 ? 'Saved Point is above (Click to find)'
                 : 'Saved Point is below (Click to find)';
-            // 색상 원복 (호버 상태가 아니면)
             if (compass.style.backgroundColor !== 'rgb(59, 130, 246)') {
                 compass.style.color = '#3b82f6';
             }
         } else if (state === 'searching') {
             compass.classList.add('mb-compass-spin');
             compass.dataset.tooltip = 'Finding location...';
-            // 검색 중에는 위쪽 화살표 유지(사용자가 위로 스크롤하며 찾는 중)
             if (!compassIcon.innerHTML.trim()) compassIcon.innerHTML = COMPASS_SVG_UP;
         } else if (state === 'found') {
             compass.classList.add('mb-compass-found');
@@ -964,7 +1013,6 @@ async function initSmartNavigator() {
     }
 
     const track = async () => {
-        // 상태 락(2초/3초 표시) 중에는 갱신 차단
         if (window.mbCompassLocked) return;
 
         const auth = await getAuthInfo();
@@ -1037,11 +1085,9 @@ async function initSmartNavigator() {
         }
 
         if (!targetBubble) {
-            // 저장점이 DOM에 없음 → 위로 스크롤하며 찾아야 함
             if (!window.isNavSearching) setCompassState('default', 'up');
             compass.style.display = 'flex';
 
-            // 🌟 말풍선 갯수 카운팅으로 진짜 끝 판단
             compass.onclick = () => {
                 if (window.isNavSearching) return;
                 window.isNavSearching = true;
@@ -1066,12 +1112,10 @@ async function initSmartNavigator() {
                         window.isNavSearching = false;
                         found.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-                        // 발견 시각적 피드백 (말풍선 하이라이트)
                         const originalBg = found.style.backgroundColor;
                         found.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
                         setTimeout(() => found.style.backgroundColor = originalBg, 2000);
 
-                        // 나침반: 초록 테두리 2초 표시
                         setCompassState('found');
                         window.mbCompassLocked = true;
                         setTimeout(() => {
@@ -1079,11 +1123,8 @@ async function initSmartNavigator() {
                             track();
                         }, 2000);
                     } else {
-                        // 페이지 내 모든 스크롤 가능 영역을 맨 위로 (로딩 트리거)
-                        window.scrollTo(0, 0);
-                        document.querySelectorAll('*').forEach(el => {
-                            if (el.scrollHeight > el.clientHeight && el.scrollTop > 0) el.scrollTo(0, 0);
-                        });
+                        // [OPTIMIZATION] querySelectorAll('*') 제거
+                        scrollAllToTop();
 
                         const currentBubbleCount = currentBubbles.length;
                         if (currentBubbleCount === previousBubbleCount) {
@@ -1091,7 +1132,6 @@ async function initSmartNavigator() {
                                 clearInterval(searchInterval);
                                 window.isNavSearching = false;
 
-                                // 나침반: 빨간 테두리 3초 표시
                                 setCompassState('notfound');
                                 window.mbCompassLocked = true;
                                 setTimeout(() => {
@@ -1113,23 +1153,35 @@ async function initSmartNavigator() {
             const moveToTarget = () => targetBubble.scrollIntoView({ behavior: 'smooth', block: 'end' });
 
             if (rect.bottom < 0) {
-                // 저장점이 화면 위쪽에 있음
                 setCompassState('default', 'up');
                 compass.style.display = 'flex';
                 compass.onclick = moveToTarget;
             } else if (rect.top > window.innerHeight) {
-                // 저장점이 화면 아래쪽에 있음
                 setCompassState('default', 'down');
                 compass.style.display = 'flex';
                 compass.onclick = moveToTarget;
             } else {
-                // 화면 안에 있음 → 나침반 숨김
                 compass.style.display = 'none';
             }
         }
     };
 
-    setInterval(track, 1000);
+    // [OPTIMIZATION] Page Visibility — 탭 가려지면 인터벌 중단
+    const startTracking = () => {
+        if (_trackInterval) return;
+        _trackInterval = setInterval(track, 1500);  // 1s → 1.5s 로 완화
+        track();
+    };
+    const stopTracking = () => {
+        if (_trackInterval) { clearInterval(_trackInterval); _trackInterval = null; }
+    };
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopTracking();
+        else startTracking();
+    });
+
+    if (!document.hidden) startTracking();
 }
 setTimeout(initSmartNavigator, 1500);
 
