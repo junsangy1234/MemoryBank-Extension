@@ -423,29 +423,14 @@ function startJobPolling(jobId, auth, estimatedCredits, flagKey, newFlag) {
 }
 
 // =========================================================
-// [OPTIMIZATION] 스크롤 가능 컨테이너 캐싱
-// document.querySelectorAll('*') 전체 순회 대신 알려진 컨테이너만 검사
+// [ORIGINAL] 스크롤 컨테이너 탐색 (가장 확실한 마스터키 방식 원복)
 // =========================================================
-function getScrollableContainers() {
-    const candidates = [
-        'main', 'main [class*="scroll"]', 'main [class*="overflow"]',
-        '[class*="conversation"]', '[class*="chat-container"]',
-        '[role="main"]', '[role="log"]',
-        'div[class*="messages"]', 'div[class*="thread"]'
-    ];
-    const found = new Set();
-    for (const sel of candidates) {
-        document.querySelectorAll(sel).forEach(el => {
-            if (el.scrollHeight > el.clientHeight + 50) found.add(el);
-        });
-    }
-    return Array.from(found);
-}
-
 function scrollAllToTop() {
     window.scrollTo(0, 0);
-    getScrollableContainers().forEach(el => {
-        if (el.scrollTop > 0) el.scrollTo(0, 0);
+    document.querySelectorAll('*').forEach(el => {
+        if (el.scrollHeight > el.clientHeight && el.scrollTop > 0) {
+            el.scrollTop = 0;
+        }
     });
 }
 
@@ -615,7 +600,7 @@ function injectFloatingMenu() {
 
                 if (reachedFlag) break;
 
-                // [OPTIMIZATION] 전체 DOM 순회 → 캐시된 컨테이너만 스크롤
+                // [OPTIMIZATION] 전체 DOM 순회
                 scrollAllToTop();
 
                 await new Promise(r => setTimeout(r, 1500));
@@ -1128,7 +1113,7 @@ async function initSmartNavigator() {
 
                         const currentBubbleCount = currentBubbles.length;
                         if (currentBubbleCount === previousBubbleCount) {
-                            if (++sameBubbleCount >= 4) {
+                            if (++sameBubbleCount >= 8) {
                                 clearInterval(searchInterval);
                                 window.isNavSearching = false;
 
@@ -1145,7 +1130,7 @@ async function initSmartNavigator() {
                         }
                         previousBubbleCount = currentBubbleCount;
                     }
-                }, 1500);
+                }, 2000);
             };
         } else {
             window.isNavSearching = false;
