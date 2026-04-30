@@ -225,7 +225,7 @@ function deductLocalCredit(auth, cost, actionName) {
 
         if (c < cost) {
             const maxMap = { PREMIUM: 1000, PRO: 300, LITE: 100 };
-            const max = maxMap[auth.userRole] ?? 10;
+            const max = maxMap[auth.userRole] ?? 20;
             newCredit = max - cost;
         } else {
             newCredit = c - cost;
