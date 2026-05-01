@@ -19,19 +19,17 @@ function setMenuState(isLoading) {
     });
 }
 
-// 🌟 [NEW] 투박한 alert 대신 예쁜 토스트 알림을 띄우는 함수
+// 🌟 [NEW] 예쁜 토스트 알림을 띄우는 함수
 function showToastOnTab(tabId, message, type = 'info') {
     chrome.scripting.executeScript({
         target: { tabId },
         func: (msg, msgType) => {
-            // 이미 띄워진 토스트가 있다면 제거 (중복 방지)
             document.getElementById('mb-toast-notification')?.remove();
 
             const toast = document.createElement('div');
             toast.id = 'mb-toast-notification';
             toast.textContent = msg;
 
-            // 색상 결정 (info: 파란색, success: 초록색, error: 빨간색)
             const bgColor = msgType === 'success' ? '#10b981' : (msgType === 'error' ? '#ef4444' : '#3b82f6');
 
             Object.assign(toast.style, {
@@ -44,13 +42,11 @@ function showToastOnTab(tabId, message, type = 'info') {
 
             document.body.appendChild(toast);
 
-            // 스르륵 나타나는 애니메이션
             requestAnimationFrame(() => {
                 toast.style.opacity = '1';
                 toast.style.transform = 'translateX(-50%) translateY(0)';
             });
 
-            // 3초 뒤에 자연스럽게 사라짐
             setTimeout(() => {
                 toast.style.opacity = '0';
                 toast.style.transform = 'translateX(-50%) translateY(20px)';
@@ -62,67 +58,65 @@ function showToastOnTab(tabId, message, type = 'info') {
 }
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-    // 저장 메뉴를 클릭했을 때
-    if (info.menuItemId === "saveSnippetMenuId") { // (실제 대표님이 쓰신 메뉴 ID로 맞추세요)
+    // 💡 ID를 "save-to-memory-bank"로 맞췄습니다.
+    if (info.menuItemId === "save-to-memory-bank") {
 
-        // 🚀 [추가된 핵심 방어 로직] 스토리지에서 실행 중인 작업 확인
+        // 🚀 스토리지에서 실행 중인 작업 확인
         const storageData = await new Promise(resolve => chrome.storage.local.get(['activeMbJob'], resolve));
 
         if (storageData.activeMbJob) {
-            // 주의: background.js에서는 alert() 함수가 안 먹히기 때문에,
-            // 사용자가 보고 있는 현재 탭(tab.id)에 스크립트를 쏴서 경고창을 띄워야 합니다.
+            // 전체 스캔 중이면 탭에 경고창 띄우고 즉시 종료!
             chrome.scripting.executeScript({
                 target: { tabId: tab.id },
                 func: () => alert("⏳ A Full Scan is currently running!\nTo prevent duplicate data, please wait until the scan is complete.")
             });
-            return; // 여기서 로직을 멈춰서 저장을 차단!
+            return;
         }
 
-    const selectedText = info.selectionText?.replace(EMOJI_REGEX, "");
-    if (!selectedText) return;
+        const selectedText = info.selectionText?.replace(EMOJI_REGEX, "");
+        if (!selectedText) return;
 
-    savingPromise = (async () => {
-        setMenuState(true);
-        // 🌟 저장 시작 시 "저장 중" 알림 띄우기
-        showToastOnTab(tab.id, "⏳ AI analyzing & saving snippet...", "info");
+        savingPromise = (async () => {
+            setMenuState(true);
+            showToastOnTab(tab.id, "⏳ AI analyzing & saving snippet...", "info");
 
-        try {
-            const { memoryBankApiKey, currentWorkspaceId } = await chrome.storage.local.get([
-                'memoryBankApiKey',
-                'currentWorkspaceId'
-            ]);
+            try {
+                const { memoryBankApiKey, currentWorkspaceId } = await chrome.storage.local.get([
+                    'memoryBankApiKey',
+                    'currentWorkspaceId'
+                ]);
 
-            if (!memoryBankApiKey) {
-                showToastOnTab(tab.id, "🚨 Login is required. Please open the popup.", "error");
-                return;
+                if (!memoryBankApiKey) {
+                    showToastOnTab(tab.id, "🚨 Login is required. Please open the popup.", "error");
+                    return;
+                }
+
+                const response = await fetch("https://aimemorybank.cloud/api/memories/join", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-API-KEY": memoryBankApiKey
+                    },
+                    body: JSON.stringify({
+                        workspaceId: currentWorkspaceId || 1,
+                        content: selectedText,
+                        type: "SNIPPET"
+                    })
+                });
+
+                if (response.ok) {
+                    showToastOnTab(tab.id, "✅ Successfully saved to Memory Bank!", "success");
+                } else if (response.status === 402) {
+                    showToastOnTab(tab.id, "⚡ Insufficient credits!", "error");
+                } else {
+                    throw new Error("Server Error");
+                }
+            } catch {
+                showToastOnTab(tab.id, "🚨 [Save Failed] Server communication error.", "error");
+            } finally {
+                savingPromise = null;
+                setMenuState(false);
             }
-
-            const response = await fetch("https://aimemorybank.cloud/api/memories/join", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-API-KEY": memoryBankApiKey
-                },
-                body: JSON.stringify({
-                    workspaceId: currentWorkspaceId || 1,
-                    content: selectedText,
-                    type: "SNIPPET"
-                })
-            });
-
-            if (response.ok) {
-                // 🌟 저장 성공 시 "완료" 알림 띄우기
-                showToastOnTab(tab.id, "✅ Successfully saved to Memory Bank!", "success");
-            } else if (response.status === 402) {
-                showToastOnTab(tab.id, "⚡ Insufficient credits!", "error");
-            } else {
-                throw new Error("Server Error");
-            }
-        } catch {
-            showToastOnTab(tab.id, "🚨 [Save Failed] Server communication error.", "error");
-        } finally {
-            savingPromise = null;
-            setMenuState(false);
-        }
-    })();
+        })();
+    } // 💡 빼먹었던 닫는 괄호를 추가했습니다!
 });
