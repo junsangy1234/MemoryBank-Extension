@@ -492,7 +492,7 @@ function injectFloatingMenu() {
 
         const showCost = (show) => {
             costSpan.style.opacity = show ? '1' : '0';
-            costSpan.style.maxWidth = show ? '60px' : '0px';
+            costSpan.style.maxWidth = show ? '80px' : '0px';
             costSpan.style.marginLeft = show ? '6px' : '0px';
         };
         btn.onmouseenter = () => showCost(true);
