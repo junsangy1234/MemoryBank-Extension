@@ -55,7 +55,7 @@ async function silentRefreshUserData() {
                 chrome.storage.local.set({
                     userRole: result.role || data.userRole || 'FREE',
                     dailyCredits: result.dailyCredits ?? 0,
-                    hasStarterPack: result.hasStarterPack || false
+                    hasStarterPack: (result.hasStarterPack !== undefined) ? result.hasStarterPack : (result.has_starter_pack || false)
                 });
             }
         } catch (e) {
@@ -157,6 +157,8 @@ document.getElementById('login-btn').addEventListener('click', () => {
             const fetchedCredits = data.dailyCredits ?? 0;
             const safeRole = data.role || 'FREE';
 
+            const starterStatus = (data.hasStarterPack !== undefined) ? data.hasStarterPack : (data.has_starter_pack || false);
+
             chrome.storage.local.set({
                 memoryBankApiKey: data.apiKey,
                 userName: data.name,
@@ -164,9 +166,10 @@ document.getElementById('login-btn').addEventListener('click', () => {
                 userRole: safeRole,
                 currentWorkspaceId: defaultWorkspaceId,
                 workspaces: data.workspaces,
-                dailyCredits: fetchedCredits
+                dailyCredits: fetchedCredits,
+                hasStarterPack: starterStatus
             }, () => {
-                showLoggedInUI(data.name, data.workspaces, defaultWorkspaceId, false, fetchedCredits, safeRole, data.hasStarterPack || false);
+                showLoggedInUI(data.name, data.workspaces, defaultWorkspaceId, false, fetchedCredits, safeRole, starterStatus);
                 document.getElementById('history-container').style.display = 'block';
 
                 const tabMenu = document.getElementById('tab-menu');
