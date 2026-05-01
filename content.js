@@ -97,7 +97,7 @@ function escapeHtml(str) {
 }
 
 function calculateFullScanCredits(textLength) {
-    return Math.max(1, Math.ceil(textLength / 5000));
+    return Math.max(1, Math.ceil(textLength / 3000));
 }
 
 function getCleanedText(element) {
@@ -501,7 +501,7 @@ function injectFloatingMenu() {
 
     const saveBtn = document.createElement('button'); setupSubButton(saveBtn, '💾 Save Snippet', `${CREDIT_COST.SAVE}⚡`);
     const loadBtn = document.createElement('button'); setupSubButton(loadBtn, '📥 Sync Memory', `${CREDIT_COST.SYNC}⚡`);
-    const scanBtn = document.createElement('button'); setupSubButton(scanBtn, '🚀 Full Scan', `1⚡/5k chars`);
+    const scanBtn = document.createElement('button'); setupSubButton(scanBtn, '🚀 Full Scan', `1⚡/3k chars`);
 
     const subBtns = [saveBtn, loadBtn, scanBtn];
 
