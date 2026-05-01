@@ -173,7 +173,7 @@ function showPaywallModal(actionType) {
     if (confirm(msg)) {
         getAuthInfo().then(auth => {
             if (auth.userEmail) {
-                const checkoutUrl = `https://memory-bank.lemonsqueezy.com/checkout/buy/48419913-7c97-4859-b3b6-50438e33db61?checkout[custom][user_email]=${encodeURIComponent(auth.userEmail)}&checkout[email]=${encodeURIComponent(auth.userEmail)}`;
+                const checkoutUrl = `https://memory-bank.lemonsqueezy.com/checkout/buy/bc87e99f-86a4-451e-b10b-e07bfd837c38?checkout[custom][user_email]=${encodeURIComponent(auth.userEmail)}&checkout[email]=${encodeURIComponent(auth.userEmail)}`;
                 window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
             } else {
                 alert("Please open the extension popup to log in first!");
@@ -527,11 +527,25 @@ function injectFloatingMenu() {
         });
 
         getAuthInfo().then(auth => {
-            const textSpan = scanBtn.querySelector('.mb-btn-text');
-            if (textSpan) {
-                const isLocked = auth.userRole === 'FREE' && !auth.hasStarterPack;
-                textSpan.textContent = isLocked ? '🔒 Full Scan' : '✨ Full Scan';
-            }
+            chrome.storage.local.get(['activeMbJob'], (data) => {
+                const scanTextSpan = scanBtn.querySelector('.mb-btn-text');
+                const saveTextSpan = saveBtn.querySelector('.mb-btn-text');
+
+                if (data.activeMbJob) {
+                    // 🚨 작업 중일 때: 시각적으로 잠금 처리
+                    if (scanTextSpan) scanTextSpan.textContent = '⏳ Scanning...';
+                    if (saveTextSpan) saveTextSpan.textContent = '⏳ Please Wait';
+                    scanBtn.style.cursor = 'not-allowed';
+                    saveBtn.style.cursor = 'not-allowed';
+                } else {
+                    // ✅ 평상시: 원래 상태로 복구
+                    const isLocked = auth.userRole === 'FREE' && !auth.hasStarterPack;
+                    if (scanTextSpan) scanTextSpan.textContent = isLocked ? '🔒 Full Scan' : '✨ Full Scan';
+                    if (saveTextSpan) saveTextSpan.textContent = '💾 Save Snippet';
+                    scanBtn.style.cursor = 'pointer';
+                    saveBtn.style.cursor = 'pointer';
+                }
+            });
         });
     };
 
@@ -550,6 +564,13 @@ function injectFloatingMenu() {
     scanBtn.onclick = async (e) => {
         e.preventDefault(); e.stopPropagation();
         if (window.mbIsBusy) return;
+
+        // 클릭 시점에도 실행 중인 작업이 있는지 검사
+        const storageData = await new Promise(resolve => chrome.storage.local.get(['activeMbJob'], resolve));
+        if (storageData.activeMbJob) {
+            alert("⏳ A Full Scan is already running in the background.\nPlease wait for it to finish before starting a new one!");
+            return;
+        }
 
         try {
             const auth = await getAuthInfo(true);
@@ -657,6 +678,12 @@ function injectFloatingMenu() {
     saveBtn.onclick = async (e) => {
         e.preventDefault(); e.stopPropagation();
         if (window.mbIsBusy) return;
+
+        const storageData = await new Promise(resolve => chrome.storage.local.get(['activeMbJob'], resolve));
+        if (storageData.activeMbJob) {
+            alert("⏳ A Full Scan is currently running!\nTo prevent duplicate data and credit waste, please wait until the scan is complete.");
+            return;
+        }
 
         try {
             const auth = await getAuthInfo(true);

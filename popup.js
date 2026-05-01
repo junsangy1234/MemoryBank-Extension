@@ -472,10 +472,10 @@ function checkActiveJobProgress() {
 }
 
 const CHECKOUT_LINKS = {
-    STARTER: "https://memory-bank.lemonsqueezy.com/checkout/buy/5673c702-c027-4ce2-94d3-2d3abbc703ba",
-    LITE: "https://memory-bank.lemonsqueezy.com/checkout/buy/48419913-7c97-4859-b3b6-50438e33db61",
-    PRO: "https://memory-bank.lemonsqueezy.com/checkout/buy/b6069143-22c7-4a59-ab74-bff25050e880",
-    PREMIUM: "https://memory-bank.lemonsqueezy.com/checkout/buy/49f98617-3a0d-4940-bbe4-ac2389965cd8"
+    STARTER: "https://memory-bank.lemonsqueezy.com/checkout/buy/f4c89cd7-d1fd-438a-ade5-584d54b82036",
+    LITE: "https://memory-bank.lemonsqueezy.com/checkout/buy/bc87e99f-86a4-451e-b10b-e07bfd837c38",
+    PRO: "https://memory-bank.lemonsqueezy.com/checkout/buy/6a7eaad3-38a5-4703-8b6c-b7de854c16f6",
+    PREMIUM: "https://memory-bank.lemonsqueezy.com/checkout/buy/fecda6b5-1b07-4ac8-bdf9-c702603b9668"
 };
 
 document.getElementById('tab-settings').addEventListener('click', () => switchTab('settings'));

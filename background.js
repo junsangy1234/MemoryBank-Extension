@@ -61,13 +61,22 @@ function showToastOnTab(tabId, message, type = 'info') {
     }).catch(err => console.error("Could not inject toast:", err));
 }
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-    if (info.menuItemId !== "save-to-memory-bank") return;
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    // 저장 메뉴를 클릭했을 때
+    if (info.menuItemId === "saveSnippetMenuId") { // (실제 대표님이 쓰신 메뉴 ID로 맞추세요)
 
-    if (savingPromise) {
-        showToastOnTab(tab.id, "⏳ Save already in progress...", "info");
-        return;
-    }
+        // 🚀 [추가된 핵심 방어 로직] 스토리지에서 실행 중인 작업 확인
+        const storageData = await new Promise(resolve => chrome.storage.local.get(['activeMbJob'], resolve));
+
+        if (storageData.activeMbJob) {
+            // 주의: background.js에서는 alert() 함수가 안 먹히기 때문에,
+            // 사용자가 보고 있는 현재 탭(tab.id)에 스크립트를 쏴서 경고창을 띄워야 합니다.
+            chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: () => alert("⏳ A Full Scan is currently running!\nTo prevent duplicate data, please wait until the scan is complete.")
+            });
+            return; // 여기서 로직을 멈춰서 저장을 차단!
+        }
 
     const selectedText = info.selectionText?.replace(EMOJI_REGEX, "");
     if (!selectedText) return;
