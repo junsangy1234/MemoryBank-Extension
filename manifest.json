@@ -1,14 +1,13 @@
 {
   "manifest_version": 3,
   "name": "AI Memory Bank",
-  "version": "1.0",
+  "version": "1.0.1",
   "description": "Build your intelligent, searchable knowledge base from AI conversations and web snippets.",
   "permissions": [
     "storage",
     "activeTab",
     "contextMenus",
     "scripting",
-    "notifications",
     "identity"
   ],
   "host_permissions": [
